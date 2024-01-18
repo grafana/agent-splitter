@@ -1,0 +1,118 @@
+// Prometheus & Mimir Splitter
+prometheus.receive_http "metrics_receiver" {
+  http {
+    listen_address = "0.0.0.0"
+    listen_port = 9901
+  }
+  forward_to = [
+    prometheus.remote_write.metrics_target_1.receiver,
+    prometheus.remote_write.metrics_target_2.receiver,
+  ]
+}
+
+prometheus.remote_write "metrics_target_1" {
+  endpoint {
+    url = "http://mimir-1:9009/api/v1/push"
+    
+    basic_auth {
+      username = "example-user"
+      password = "example-password"
+    }
+  }
+}
+
+prometheus.remote_write "metrics_target_2" {
+  endpoint {
+    url = "http://mimir-2:9009/api/v1/push"
+    
+    basic_auth {
+      username = "example-user"
+      password = "example-password"
+    }
+  }
+}
+
+// Loki Splitter
+loki.source.api "logs_receiver" {
+    http {
+        listen_address = "0.0.0.0"
+        listen_port = 9902
+    }
+    forward_to = [
+        loki.write.logs_target_1.receiver,
+        loki.write.logs_target_2.receiver,
+    ]
+    labels = {
+        forwarded = "true",
+    }
+}
+
+loki.write "logs_target_1" {
+    endpoint {
+        url = "http://loki-1:3100/api/v1/push"
+        basic_auth {
+      username = "example-user"
+      password = "example-password"
+        }
+    }
+}
+
+loki.write "logs_target_2" {
+    endpoint {
+        url = "http://loki-2:3100/api/v1/push"
+        basic_auth {
+      username = "example-user"
+      password = "example-password"
+        }
+    }
+}
+
+// OTLP Splitter (e.g. Traces)
+otelcol.receiver.otlp "receiver" {
+  debug_metrics {
+    disable_high_cardinality_metrics = true
+  }
+
+  grpc {
+    endpoint = "0.0.0.0:4317"
+  }
+  http {
+    endpoint = "0.0.0.0:4318"
+  }
+  output {
+    metrics = [
+      otelcol.exporter.otlp.otlp_service_1.input,
+      otelcol.exporter.otlp.otlp_service_2.input,
+    ]
+    logs = [
+      otelcol.exporter.otlp.otlp_service_1.input,
+      otelcol.exporter.otlp.otlp_service_2.input,
+    ]
+    traces = [
+      otelcol.exporter.otlp.otlp_service_1.input,
+      otelcol.exporter.otlp.otlp_service_2.input,
+    ]
+  }
+}
+
+otelcol.exporter.otlp "otlp_service_1" {
+  client {
+    endpoint = "otlp-gateway-1.4317"
+    auth     = otelcol.auth.basic.otlp_service_1.handler
+  }
+}
+otelcol.auth.basic "otlp_service_1" {
+  username = "example-user"
+  password = "example-password"
+}
+
+otelcol.exporter.otlp "otlp_service_2" {
+  client {
+    endpoint = "otlp-gateway-2.4317"
+    auth     = otelcol.auth.basic.otlp_service_2.handler
+  }
+}
+otelcol.auth.basic "otlp_service_2" {
+  username = "example-user"
+  password = "example-password"
+}
